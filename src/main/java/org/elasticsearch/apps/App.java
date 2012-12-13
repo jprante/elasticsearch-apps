@@ -41,5 +41,5 @@ public interface App extends Plugin {
      
      String type();
      
-     String scope();
+     String getCanonicalForm();
 }

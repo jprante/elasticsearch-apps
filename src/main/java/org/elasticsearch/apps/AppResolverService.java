@@ -24,40 +24,75 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
+import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.Arrays;
+import java.security.cert.X509Certificate;
 import java.util.Collection;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import org.elasticsearch.ElasticSearchException;
+import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.collect.ImmutableMap;
 import org.elasticsearch.common.collect.Lists;
 import org.elasticsearch.common.collect.MapBuilder;
-import org.elasticsearch.common.collect.Maps;
 import org.elasticsearch.common.collect.Sets;
 import org.elasticsearch.common.component.AbstractComponent;
 import org.elasticsearch.common.component.LifecycleComponent;
+import org.elasticsearch.common.http.client.HttpDownloadHelper;
 import org.elasticsearch.common.inject.Module;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.CloseableIndexComponent;
+import org.elasticsearch.plugins.Plugin;
 import org.jboss.shrinkwrap.resolver.api.maven.Maven;
 import org.jboss.shrinkwrap.resolver.api.maven.MavenResolvedArtifact;
+import org.jboss.shrinkwrap.resolver.api.maven.PackagingType;
 import org.jboss.shrinkwrap.resolver.api.maven.ScopeType;
 import org.jboss.shrinkwrap.resolver.api.maven.coordinate.MavenDependencies;
 import org.jboss.shrinkwrap.resolver.api.maven.coordinate.MavenDependency;
+import org.jboss.shrinkwrap.resolver.api.maven.coordinate.MavenDependencyExclusion;
 
 public class AppResolverService extends AbstractComponent {
 
-    private final Environment environment;
     private final ImmutableMap<String, App> apps;
     private final ImmutableMap<App, List<OnModuleReference>> onModuleReferences;
 
-    //private final ConfigurableMavenResolverSystemImpl resolver = new ConfigurableMavenResolverSystemImpl();
+    static {
+        TrustManager[] trustAllCerts = new TrustManager[]{
+            new X509TrustManager() {
+                @Override
+                public X509Certificate[] getAcceptedIssuers() {
+                    return null;
+                }
+
+                @Override
+                public void checkClientTrusted(X509Certificate[] certs, String authType) {
+                }
+
+                @Override
+                public void checkServerTrusted(X509Certificate[] certs, String authType) {
+                }
+            }
+        };
+
+        // Install the all-trusting trust manager
+        try {
+            SSLContext sc = SSLContext.getInstance("SSL");
+            sc.init(null, trustAllCerts, new java.security.SecureRandom());
+            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     static class OnModuleReference {
 
         public final Class<? extends Module> moduleClass;
@@ -77,63 +112,71 @@ public class AppResolverService extends AbstractComponent {
      */
     public AppResolverService(Settings settings, Environment environment) {
         super(settings);
-        this.environment = environment;
-
-        Map<String, App> apps = Maps.newHashMap();
+        HttpDownloadHelper downloadHelper = new HttpDownloadHelper();
 
         String mavenSettingsFile = settings.get("apps.settings", "config/settings-es.xml");
+        final MavenDependencyExclusion exclusion = MavenDependencies
+                .createExclusion("org.elasticsearch:elasticsearch");
+        MavenResolvedArtifact[] artifacts = null;
         String[] defaultAppClasses = settings.getAsArray("apps.dependencies");
         if (defaultAppClasses.length > 0) {
             MavenDependency[] defaultDeps = new MavenDependency[defaultAppClasses.length];
             for (int i = 0; i < defaultAppClasses.length; i++) {
                 logger.info("adding dependency {}", defaultAppClasses[i]);
-                defaultDeps[i] = MavenDependencies.createDependency(defaultAppClasses[i], ScopeType.COMPILE, false);
+                defaultDeps[i] = MavenDependencies.createDependency(defaultAppClasses[i],
+                        ScopeType.COMPILE, false, exclusion);
             }
-            
-            MavenResolvedArtifact[] artifacts = Maven.configureResolver()
+            artifacts = Maven.configureResolver()
                     .fromFile(mavenSettingsFile)
                     .addDependencies(defaultDeps)
                     .resolve()
+                    .withMavenCentralRepo(true)
                     .withTransitivity()
                     .asResolvedArtifact();
+        }
 
-            for (MavenResolvedArtifact artifact : artifacts) {
-                logger.info("found artifact {} {} {}",
-                        artifact.getCoordinate().getGroupId(),
-                        artifact.getCoordinate().getArtifactId(),
-                        artifact.getCoordinate().getVersion());
+        Map<String, App> loadedApps = loadApps(settings, artifacts);
+
+        String[] defaultSites = settings.getAsArray("apps.sites");
+        if (defaultSites.length > 0) {
+            for (int i = 0; i < defaultSites.length; i++) {
+                try {
+                    URL url = new URL(defaultSites[i]);
+                    SiteApp app = new SiteApp(url);
+                    File appFile = app.getInstallPath(environment);
+                    if (appFile.exists()) {
+                        loadedApps.put(app.getCanonicalForm(), app);
+                    } else {
+                        logger.info("retrieving site from URL {}", defaultSites[i]);
+                        downloadHelper.download(url, appFile, null);
+                        if (new File(appFile, "_site").exists()) {
+                            loadedApps.put(app.getCanonicalForm(), app);
+                        }
+                    }
+                } catch (MalformedURLException e) {
+                    logger.error(e.getMessage(), e);
+                } catch (IOException e) {
+                    logger.error(e.getMessage(), e);
+                }
             }
         }
 
-        //first we load all the default apps from the settings
-        /*String[] defaultPluginsClasses = settings.getAsArray("app.types");
-         for (String pluginClass : defaultPluginsClasses) {
-         Plugin app = loadApp(pluginClass, settings);
-         apps.put(app.name(), app);
-         }
+        this.apps = ImmutableMap.copyOf(loadedApps);
 
-         // now, find all the ones that are in the classpath
-         loadPluginsIntoClassLoader();
-         apps.putAll(loadPluginsFromClasspath(settings));
-         Set<String> siteApps = siteApps();
+        String[] mandatoryApps = settings.getAsArray("apps.mandatory", null);
+        if (mandatoryApps != null) {
+            Set<String> missingApps = Sets.newHashSet();
+            for (String mandatoryApp : mandatoryApps) {
+                if (!apps.containsKey(mandatoryApp) && !missingApps.contains(mandatoryApp)) {
+                    missingApps.add(mandatoryApp);
+                }
+            }
+            if (!missingApps.isEmpty()) {
+                throw new ElasticSearchException("Missing mandatory apps [" + Strings.collectionToDelimitedString(missingApps, ", ") + "]");
+            }
+        }
 
-         String[] mandatoryPlugins = settings.getAsArray("app.mandatory", null);
-         if (mandatoryPlugins != null) {
-         Set<String> missingPlugins = Sets.newHashSet();
-         for (String mandatoryPlugin : mandatoryPlugins) {
-         if (!apps.containsKey(mandatoryPlugin) && !siteApps.contains(mandatoryPlugin) && !missingPlugins.contains(mandatoryPlugin)) {
-         missingPlugins.add(mandatoryPlugin);
-         }
-         }
-         if (!missingPlugins.isEmpty()) {
-         throw new ElasticSearchException("Missing mandatory apps [" + Strings.collectionToDelimitedString(missingPlugins, ", ") + "]");
-         }
-         }
-         */
-        Set<String> siteApps = siteApps();
-        logger.info("TODO: apps {}, sites {}", apps.keySet(), siteApps);
-
-        this.apps = ImmutableMap.copyOf(apps);
+        logger.info("apps {}", apps.keySet());
 
         MapBuilder<App, List<OnModuleReference>> onModuleReferences = MapBuilder.newMapBuilder();
         for (App app : apps.values()) {
@@ -271,33 +314,10 @@ public class AppResolverService extends AbstractComponent {
         return services;
     }
 
-    private Set<String> siteApps() {
-        File appsFile = environment.pluginsFile();
-        Set<String> siteApps = Sets.newHashSet();
-        if (!appsFile.exists()) {
-            return siteApps;
+    private Map<String, App> loadApps(Settings settings, MavenResolvedArtifact[] artifacts) {
+        if (artifacts == null) {
+            return newHashMap();
         }
-        if (!appsFile.isDirectory()) {
-            return siteApps;
-        }
-        File[] appsFiles = appsFile.listFiles();
-        for (File appFile : appsFiles) {
-            if (new File(appFile, "_site").exists()) {
-                siteApps.add(appFile.getName());
-            }
-        }
-        return siteApps;
-    }
-
-    private void loadAppsIntoClassLoader() {
-        File appsFile = environment.pluginsFile();
-        if (!appsFile.exists()) {
-            return;
-        }
-        if (!appsFile.isDirectory()) {
-            return;
-        }
-
         ClassLoader classLoader = settings.getClassLoader();
         Class classLoaderClass = classLoader.getClass();
         Method addURL = null;
@@ -312,62 +332,52 @@ public class AppResolverService extends AbstractComponent {
             }
         }
         if (addURL == null) {
-            logger.debug("failed to find addURL method on classLoader [" + classLoader + "] to add methods");
-            return;
+            logger.error("failed to find addURL method on classLoader [" + classLoader + "] to add methods");
+            return newHashMap();
         }
-
-        File[] appsFiles = appsFile.listFiles();
-        for (File appFile : appsFiles) {
-            if (appFile.isDirectory()) {
-                logger.trace("--- adding app [" + appFile.getAbsolutePath() + "]");
+        Map<URL, MavenResolvedArtifact> urlMap = newHashMap();
+        for (MavenResolvedArtifact artifact : artifacts) {
+            if (artifact.getCoordinate().getType().equals(PackagingType.JAR)) {
                 try {
-                    // add the root
-                    addURL.invoke(classLoader, appFile.toURI().toURL());
-                    // gather files to add
-                    List<File> libFiles = Lists.newArrayList();
-                    if (appFile.listFiles() != null) {
-                        libFiles.addAll(Arrays.asList(appFile.listFiles()));
-                    }
-                    File libLocation = new File(appFile, "lib");
-                    if (libLocation.exists() && libLocation.isDirectory() && libLocation.listFiles() != null) {
-                        libFiles.addAll(Arrays.asList(libLocation.listFiles()));
-                    }
-
-                    // if there are jars in it, add it as well
-                    for (File libFile : libFiles) {
-                        if (!(libFile.getName().endsWith(".jar") || libFile.getName().endsWith(".zip"))) {
-                            continue;
-                        }
-                        addURL.invoke(classLoader, libFile.toURI().toURL());
-                    }
+                    URL url = artifact.asFile().toURI().toURL();
+                    addURL.invoke(classLoader, url);
+                    urlMap.put(url, artifact);
                 } catch (Exception e) {
-                    logger.warn("failed to add app [" + appFile + "]", e);
+                    logger.warn("failed to add [{}]", artifact, e);
                 }
             }
         }
+        return loadAppsFromClasspath(settings, urlMap);
     }
 
-    private Map<String, App> loadAppsFromClasspath(Settings settings) {
-        Map<String, App> apps = newHashMap();
-        Enumeration<URL> appUrls = null;
+    private Map<String, App> loadAppsFromClasspath(Settings settings, Map<URL, MavenResolvedArtifact> jars) {
+        Map<String, App> map = newHashMap();
+        Enumeration<URL> propUrls = null;
         try {
-            appUrls = settings.getClassLoader().getResources("es-plugin.properties");
+            propUrls = settings.getClassLoader().getResources("es-plugin.properties");
         } catch (IOException e1) {
             logger.warn("failed to find properties on classpath", e1);
             return ImmutableMap.of();
         }
-        while (appUrls.hasMoreElements()) {
-            URL appUrl = appUrls.nextElement();
+        while (propUrls.hasMoreElements()) {
+            URL propUrl = propUrls.nextElement();
             Properties appProps = new Properties();
             InputStream is = null;
             try {
-                is = appUrl.openStream();
+                is = propUrl.openStream();
                 appProps.load(is);
                 String appClassName = appProps.getProperty("plugin");
-                App app = loadApp(appClassName, settings);
-                apps.put(app.name(), app);
+                Plugin plugin = loadPlugin(appClassName, settings);
+                // find URL of artifact
+                boolean found = false;
+                for (URL appUrl : jars.keySet()) {
+                    if (propUrl.toExternalForm().startsWith("jar:" + appUrl.toExternalForm())) {
+                        ArtifactApp app = new ArtifactApp(appUrl, jars.get(appUrl), plugin);
+                        map.put(app.getCanonicalForm(), app);
+                    }
+                }
             } catch (Exception e) {
-                logger.warn("failed to load app from [" + appUrl + "]", e);
+                logger.warn("failed to load app from [" + propUrl + "]", e);
             } finally {
                 if (is != null) {
                     try {
@@ -378,26 +388,25 @@ public class AppResolverService extends AbstractComponent {
                 }
             }
         }
-        return apps;
+        return map;
     }
 
-    private App loadApp(String className, Settings settings) {
+    private Plugin loadPlugin(String className, Settings settings) {
         try {
-            Class<? extends App> appClass = (Class<? extends App>) settings.getClassLoader().loadClass(className);
+            Class<? extends Plugin> pluginClass = (Class<? extends Plugin>) settings.getClassLoader().loadClass(className);
             try {
-                return appClass.getConstructor(Settings.class).newInstance(settings);
+                return pluginClass.getConstructor(Settings.class).newInstance(settings);
             } catch (NoSuchMethodException e) {
                 try {
-                    return appClass.getConstructor().newInstance();
+                    return pluginClass.getConstructor().newInstance();
                 } catch (NoSuchMethodException e1) {
-                    throw new ElasticSearchException("No constructor for [" + appClass + "]. An App class must "
+                    throw new ElasticSearchException("No constructor for [" + pluginClass + "]. A Plugin class must "
                             + "have either an empty default constructor or a single argument constructor accepting a "
                             + "Settings instance");
                 }
             }
-
         } catch (Exception e) {
-            throw new ElasticSearchException("Failed to load app [" + className + "]", e);
+            throw new ElasticSearchException("Failed to load plugin class [" + className + "]", e);
         }
 
     }
