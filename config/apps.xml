@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
+
+<!-- see http://maven.apache.org/settings.html -->
+
 <settings>
    <localRepository>repo</localRepository>
-
+   <!--  <offline>false</offline>  -->
    <profiles>
       <profile>
          <activation>
@@ -11,7 +14,7 @@
             <repository>
                <id>app-repository</id>
                <name>App repository</name>
-               <url>file://${basedir}/target/repository</url>
+               <url>file://${user.home}/.m2/repository</url>
                <layout>default</layout>
                <releases>
                   <enabled>true</enabled>

@@ -1,4 +1,25 @@
+/*
+ * Licensed to ElasticSearch and Shay Banon under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. ElasticSearch licenses this
+ * file to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 package org.elasticsearch.apps;
+
+import static org.elasticsearch.common.settings.ImmutableSettings.Builder.EMPTY_SETTINGS;
 
 import java.io.File;
 import java.net.URL;
@@ -9,41 +30,52 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.CloseableIndexComponent;
 
+/**
+ * A web site archive as an App
+ * 
+ * @author joerg
+ */
 public class SiteApp implements App {
-    
-    URL url;
-    
-    String groupId;
-    
-    String artifactId;
-    
-    String version;
-    
-    String type;
-    
-    SiteApp(URL url) {
+
+    private final URL url;
+    private final String name;
+    private final String groupId;
+    private final String artifactId;
+    private final String version;
+    private final String type;
+
+    public SiteApp(String groupId, String name, String version, URL url) {
         this.url = url;
+        this.name = name;
+        this.version = version;
+        this.groupId = groupId;
         String path = url.getPath();
         int pos = path.lastIndexOf("/");
-        String file = pos >= 0 ? path.substring(pos+1) : path;
-        groupId = "org.elasticsearch.apps.site";
+        String file = pos >= 0 ? path.substring(pos + 1) : path;
         pos = file.lastIndexOf(".");
-        type = pos >= 0 ? file.substring(pos+1) : file;
-        String basename = file.substring(0, pos);
-        pos = basename.lastIndexOf("-");
-        version = pos >= 0 ? basename.substring(pos+1) : "0";
-        artifactId = basename.substring(0, pos);
-    }
-    
-    public File getInstallPath(Environment environment) {
-        return new File(environment.pluginsFile(), artifactId);
+        this.type = pos >= 0 ? file.substring(pos + 1) : file;
+        this.artifactId = name;
     }
 
-    @Override    
-    public String getCanonicalForm() {
-        return groupId + ":" + artifactId + ":" + version + ":" + type;        
-    }
+    public String getPathName() {
+        String pathName = name;
+        if (name.startsWith("elasticsearch-")) {
+            pathName = name.substring("elasticsearch-".length());
+        } else if (name.startsWith("es-")) {
+            pathName = name.substring("es-".length());
+        }
+        return pathName;
+    }   
     
+    public File getInstallPath(Environment environment) {
+        return new File(environment.pluginsFile(), getPathName());
+    }
+
+    @Override
+    public String getCanonicalForm() {
+        return groupId + ":" + artifactId + ":" + version + ":" + type;
+    }
+
     @Override
     public String groupId() {
         return groupId;
@@ -66,12 +98,12 @@ public class SiteApp implements App {
 
     @Override
     public String type() {
-        return "site";
+        return type;
     }
 
     @Override
     public String name() {
-        return groupId + ":" + artifactId + ":" + version;
+        return name;
     }
 
     @Override
@@ -130,6 +162,6 @@ public class SiteApp implements App {
 
     @Override
     public Settings additionalSettings() {
-        return null;
+        return EMPTY_SETTINGS;
     }
 }
