@@ -365,5 +365,6 @@
 
 ########################### Apps #############################################
 
-apps.dependencies.river-rabbitmq.dependency: org.elasticsearch:elasticsearch-river-rabbitmq:0.17.10
+apps.dependencies.river-rabbitmq.dependency: org.elasticsearch:elasticsearch-river-rabbitmq:[0.17.10,)
+
 apps.sites.elasticsearch-head.url: https://github.com/mobz/elasticsearch-head/archive/master.zip

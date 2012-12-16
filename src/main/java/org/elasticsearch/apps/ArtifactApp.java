@@ -50,6 +50,10 @@ public class ArtifactApp implements App {
         return url;
     }
     
+    public Plugin getPlugin() {
+        return plugin;
+    }
+    
     @Override    
     public String getCanonicalForm() {
         return artifact.getCoordinate().toCanonicalForm();        

@@ -19,8 +19,6 @@
 
 package org.elasticsearch.apps;
 
-import static org.elasticsearch.common.settings.ImmutableSettings.Builder.EMPTY_SETTINGS;
-
 import java.io.File;
 import java.net.URL;
 import java.util.Collection;
@@ -29,25 +27,26 @@ import org.elasticsearch.common.inject.Module;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.index.CloseableIndexComponent;
+import org.elasticsearch.plugins.Plugin;
 
 /**
- * A web site archive as an App
+ * A legacy plugin as an App
  * 
  * @author joerg
  */
-public class SiteApp implements App {
+public class PluginApp implements App {
 
-    public final static String GROUP_ID = "org.elasticsearch.apps.site";
+    public final static String GROUP_ID = "org.elasticsearch.apps.plugin";
     
-    private final URL url;
     private final String name;
     private final String groupId;
     private final String artifactId;
     private final String version;
     private final String type;
+    private final URL url;
+    private Plugin plugin;
 
-    public SiteApp(String groupId, String name, String version, URL url) {
-        this.url = url;
+    public PluginApp(String groupId, String name, String version, URL url) {
         this.name = name;
         this.version = version;
         this.groupId = groupId;
@@ -56,6 +55,29 @@ public class SiteApp implements App {
         String file = pos >= 0 ? path.substring(pos + 1) : path;
         pos = file.lastIndexOf(".");
         this.type = pos >= 0 ? file.substring(pos + 1) : file;
+        this.artifactId = name;
+        this.url = url;
+    }
+    
+    public PluginApp(String groupId, URL url, Plugin plugin) {        
+        this.groupId = groupId;
+        this.url = url;
+        String path = url.getPath(); // URL is URL of es-plugin.properties
+        int pos = path.lastIndexOf("/");
+        String file = pos >= 0 ? path.substring(pos + 1) : path;
+        path = pos>= 0 ? path.substring(0, pos) : path;
+        pos = path.lastIndexOf("/");        
+        String name = pos >= 0 ? path.substring(pos + 1) : path;
+        if (name.endsWith("!")) {
+            name = name.substring(0,name.length()-1);
+        }
+        pos = name.lastIndexOf(".");
+        this.type = pos >= 0 ? name.substring(pos+1) : "zip";
+        name = pos >= 0 ? name.substring(0,pos) : name;
+        pos = name.lastIndexOf("-");
+        this.version = pos >=0 ? name.substring(pos+1) : "0";
+        name = pos >= 0 ? name.substring(0, pos) : name;
+        this.name = name;
         this.artifactId = name;
     }
 
@@ -95,7 +117,7 @@ public class SiteApp implements App {
 
     @Override
     public String classifier() {
-        return "site";
+        return "plugin";
     }
 
     @Override
@@ -105,65 +127,71 @@ public class SiteApp implements App {
 
     @Override
     public String name() {
-        return name;
+        return plugin.name();
     }
 
     @Override
     public String description() {
-        return "Site plugin from " + url;
+        return plugin.description();
     }
 
     @Override
     public Collection<Class<? extends Module>> modules() {
-        return null;
+        return plugin.modules();
     }
 
     @Override
     public Collection<? extends Module> modules(Settings stngs) {
-        return null;
+        return plugin.modules(stngs);
     }
 
     @Override
     public Collection<Class<? extends LifecycleComponent>> services() {
-        return null;
+        return plugin.services();
     }
 
     @Override
     public Collection<Class<? extends Module>> indexModules() {
-        return null;
+        return plugin.indexModules();
     }
 
     @Override
     public Collection<? extends Module> indexModules(Settings stngs) {
-        return null;
+        return plugin.indexModules(stngs);
     }
 
     @Override
     public Collection<Class<? extends CloseableIndexComponent>> indexServices() {
-        return null;
+        return plugin.indexServices();
     }
 
     @Override
     public Collection<Class<? extends Module>> shardModules() {
-        return null;
+        return plugin.shardModules();
     }
 
     @Override
     public Collection<? extends Module> shardModules(Settings stngs) {
-        return null;
+        return plugin.shardModules(stngs);
     }
 
     @Override
     public Collection<Class<? extends CloseableIndexComponent>> shardServices() {
-        return null;
+        return plugin.shardServices();
     }
 
     @Override
     public void processModule(Module module) {
+        plugin.processModule(module);
     }
 
     @Override
     public Settings additionalSettings() {
-        return EMPTY_SETTINGS;
+        return plugin.additionalSettings();
+    }
+    
+    @Override
+    public String toString() {
+        return getCanonicalForm();
     }
 }
