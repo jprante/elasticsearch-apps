@@ -8,7 +8,7 @@ Elasticsearch Apps is a tool for instrumenting the Maven artifact dependency mec
 
 It extends the ``PluginManager``, the ``PluginService`` and the ``PluginsModule`` classes in ``org.elasticsearch.plugins``. Existing Elasticsearch plugins, which are offered as zip file downloads, can be used without modification.
 
-The tool ``bin/apps`` is aimed to replace ``bin/plugins``, which works similar, but uses the JBoss ShrinkWrap resolver project to handle with Maven artifacts in remote repositories.
+The tool ``bin/apps`` is aimed to replace ``bin/plugins``. It works similar, but uses the JBoss ShrinkWrap resolver project to handle with Maven artifacts in remote repositories.
 
 The config file ``config/elasticsearch.yml`` is enriched by additional entries for declaring the Elasticsearch apps.
 
@@ -16,7 +16,7 @@ Apps are divided into three groups:
 
 - plugin apps, downloaded as a zip file from an URL
 - site apps, downloaded as a zip file from an URL
-- Maven artifact apps, with dependencies resolved
+- Maven artifact apps, with dependencies 
 
 
 How to set it up
@@ -24,7 +24,7 @@ How to set it up
 
 For the Maven part, there is a new configuration file ``config/apps.xml`` which is equivalent to the Maven ``settings.xml``. In this file, Maven repositories for Elasticsearch can be configured. 
 
-This is a verbose sample of a ``config/apps.xml`` which just activates the Maven central repo where the ELasticsearch plugins live.
+This is a verbose sample of a ``config/apps.xml`` which just activates the Maven central repo where the Elasticsearch core plugins already live.
 
 	<?xml version="1.0" encoding="UTF-8"?>
 	<!-- see http://maven.apache.org/settings.html -->
@@ -124,13 +124,13 @@ The Elasticsearch apps effort is currently under development.
 
 For the iterations already done with logfile dumps and info, see
 
-[Iteration 1](wiki/Iteration-1)
+[Iteration 1](elasticsearch-apps/wiki/Iteration-1)
 
-[Iteration 2](wiki/Iteration-2)
+[Iteration 2](elasticsearch-apps/wiki/Iteration-2)
 
-[Iteration 3](wiki/Iteration-3)
+[Iteration 3](elasticsearch-apps/wiki/Iteration-3)
 
-[Iteration 4](wiki/Iteration-4)
+[Iteration 4](elasticsearch-apps/wiki/Iteration-4)
 
 
 License
