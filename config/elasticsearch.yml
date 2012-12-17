@@ -372,6 +372,10 @@ apps:
     elasticsearch-head:
       url: https://github.com/mobz/elasticsearch-head/archive/master.zip
       enabled: true
+  excludes: [
+      "org.elasticsearch:elasticsearch",      
+      "log4j:log4j"
+  ]
   dependencies:
     analysis-icu:
       dependency: org.elasticsearch:elasticsearch-analysis-icu:[1.0.0,)

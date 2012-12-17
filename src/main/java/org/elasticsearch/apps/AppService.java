@@ -115,14 +115,20 @@ public class AppService extends AbstractComponent {
      */
     private Map<String, ArtifactApp> artifactApps = newHashMap();
     /**
+     * A map for apps that are legacy plugins
+     */
+    private Map<String, PluginApp> pluginApps = newHashMap();
+    /**
      * A map for apps that are sites
      */
     private Map<String, SiteApp> siteApps = newHashMap();
     /**
-     * A map for apps that are legacy plugins
+     * A map for apps that have module method (artifacts plus plugins)
      */
-    private Map<String, PluginApp> pluginApps = newHashMap();
-    // TODO replace the HTTP download helper by a Netty based implementation
+    private Map<String, App> moduleApps = newHashMap();
+    /**
+     * TODO replace the HTTP download helper by a Netty based implementation
+     */
     private final HttpDownloadHelper downloadHelper = new HttpDownloadHelper();
 
     /**
@@ -248,12 +254,16 @@ public class AppService extends AbstractComponent {
         apps.putAll(pluginApps);
         apps.putAll(siteApps);
 
+        this.moduleApps = newHashMap();
+        moduleApps.putAll(artifactApps);
+        moduleApps.putAll(pluginApps);
+        
         checkMandatory();
 
         // TODO check versions
 
         MapBuilder<App, List<OnModuleReference>> refs = MapBuilder.newMapBuilder();
-        for (App app : apps.values()) {
+        for (App app : moduleApps.values()) {
             List<OnModuleReference> list = onModuleRefs(app);
             if (!list.isEmpty()) {
                 refs.put(app, list);
@@ -276,12 +286,15 @@ public class AppService extends AbstractComponent {
         final String mavenSettingsFile = settings.get("apps.settings", DEFAULT_SETTINGS);
         final boolean useMavenCentral = settings.getAsBoolean("apps.usemavencentral", Boolean.TRUE);
         final String[] defaultExcludes = settings.getAsArray("apps.excludes", DEFAULT_EXCLUDE);
-        final MavenDependencyExclusion[] exclusions = new MavenDependencyExclusion[defaultExcludes.length + excludes.length];
+        final MavenDependencyExclusion[] exclusions =
+                new MavenDependencyExclusion[defaultExcludes.length + (excludes != null ? excludes.length : 0)];
         for (int i = 0; i < defaultExcludes.length; i++) {
             exclusions[i] = MavenDependencies.createExclusion(defaultExcludes[i]);
         }
-        for (int i = 0; i < excludes.length; i++) {
-            exclusions[defaultExcludes.length + i] = MavenDependencies.createExclusion(excludes[i]);
+        if (excludes != null) {
+            for (int i = 0; i < excludes.length; i++) {
+                exclusions[defaultExcludes.length + i] = MavenDependencies.createExclusion(excludes[i]);
+            }
         }
         ScopeType scopeType = scope != null ? ScopeType.fromScopeType(scope) : ScopeType.RUNTIME;
         // optional = false
@@ -359,6 +372,84 @@ public class AppService extends AbstractComponent {
             onModuleReferences.put(app, list);
         }
         return oldApp;
+    }
+
+    public Set<DependencyInfo> dependencyTree(String dependency) {
+        Set<DependencyInfo> visited = Sets.newHashSet();
+        return dependencyTree(dependency, visited, 0);
+    }
+
+    public Set<DependencyInfo> dependencyTree(String dependency, Set<DependencyInfo> visited, int level) {
+        final String mavenSettingsFile = settings.get("apps.settings", DEFAULT_SETTINGS);
+        final boolean useMavenCentral = settings.getAsBoolean("apps.usemavencentral", Boolean.TRUE);
+        final String[] defaultExcludes = settings.getAsArray("apps.excludes", DEFAULT_EXCLUDE);
+        MavenDependencyExclusion[] exclusions = new MavenDependencyExclusion[defaultExcludes.length];
+        for (int i = 0; i < defaultExcludes.length; i++) {
+            exclusions[i] = MavenDependencies.createExclusion(defaultExcludes[i]);
+        }
+        MavenDependency dep = MavenDependencies.createDependency(dependency, ScopeType.RUNTIME, false, exclusions);
+        MavenResolvedArtifact[] artifacts = Maven.configureResolver()
+                .fromFile(mavenSettingsFile)
+                .addDependencies(dep)
+                .resolve()
+                .withMavenCentralRepo(useMavenCentral)
+                .withTransitivity()
+                .asResolvedArtifact();
+        Set<DependencyInfo> foundDeps = Sets.newLinkedHashSet();
+        if (artifacts != null && artifacts.length > 0) {
+            DependencyInfo info = new DependencyInfo(artifacts[0], level);
+            visited.add(info);
+            foundDeps.add(info);
+            for (MavenResolvedArtifact artifact : artifacts) {                
+                String artifactName = artifact.getCoordinate().toCanonicalForm();
+                info = new DependencyInfo(artifact, level + 1);
+                if (!visited.contains(info)) {
+                    visited.add(info);
+                    foundDeps.add(info);
+                    foundDeps.addAll(dependencyTree(artifactName, visited, level + 1));
+                }
+            }
+        }
+        return foundDeps;
+    }
+
+    public Set<App> whatRequires(String dependency) {
+        Set<String> visited = Sets.newHashSet();
+        return whatRequires(dependency, visited);
+    }
+
+    public Set<App> whatRequires(String dependency, Set<String> visited) {
+        final String mavenSettingsFile = settings.get("apps.settings", DEFAULT_SETTINGS);
+        final boolean useMavenCentral = settings.getAsBoolean("apps.usemavencentral", Boolean.TRUE);
+        final String[] defaultExcludes = settings.getAsArray("apps.excludes", DEFAULT_EXCLUDE);
+        Set<App> foundDeps = Sets.newHashSet();
+        for (App app : artifactApps.values()) {
+            MavenDependencyExclusion[] exclusions = new MavenDependencyExclusion[defaultExcludes.length];
+            for (int i = 0; i < defaultExcludes.length; i++) {
+                exclusions[i] = MavenDependencies.createExclusion(defaultExcludes[i]);
+            }
+            MavenDependency dep = MavenDependencies.createDependency(app.getCanonicalForm(), ScopeType.RUNTIME, false, exclusions);
+            MavenResolvedArtifact[] artifacts = Maven.configureResolver()
+                    .fromFile(mavenSettingsFile)
+                    .addDependencies(dep)
+                    .resolve()
+                    .withMavenCentralRepo(useMavenCentral)
+                    .withTransitivity()
+                    .asResolvedArtifact();
+            if (artifacts != null && artifacts.length > 0) {
+                visited.add(artifacts[0].getCoordinate().toCanonicalForm());
+                for (MavenResolvedArtifact artifact : artifacts) {
+                    String artifactName = artifact.getCoordinate().toCanonicalForm();
+                    if (artifactName.startsWith(dependency)) {
+                        foundDeps.add(app);
+                    } else if (!visited.contains(artifactName)) {
+                        visited.add(artifactName);
+                        foundDeps.addAll(whatRequires(artifactName, visited));
+                    }
+                }
+            }
+        }
+        return foundDeps;
     }
 
     /**
@@ -829,7 +920,7 @@ public class AppService extends AbstractComponent {
     }
 
     public void processModule(Module module) {
-        for (App app : apps.values()) {
+        for (App app : moduleApps.values()) {
             app.processModule(module);
             // see if there are onModule references
             List<OnModuleReference> references = onModuleReferences.get(app);
@@ -850,7 +941,7 @@ public class AppService extends AbstractComponent {
     public Settings updatedSettings() {
         ImmutableSettings.Builder builder = ImmutableSettings.settingsBuilder()
                 .put(this.settings);
-        for (App app : apps.values()) {
+        for (App app : moduleApps.values()) {
             builder.put(app.additionalSettings());
         }
         return builder.build();
@@ -858,7 +949,7 @@ public class AppService extends AbstractComponent {
 
     public Collection<Class<? extends Module>> modules() {
         List<Class<? extends Module>> modules = Lists.newArrayList();
-        for (App app : apps.values()) {
+        for (App app : moduleApps.values()) {
             modules.addAll(app.modules());
         }
         return modules;
@@ -866,7 +957,7 @@ public class AppService extends AbstractComponent {
 
     public Collection<Module> modules(Settings settings) {
         List<Module> modules = Lists.newArrayList();
-        for (App app : apps.values()) {
+        for (App app : moduleApps.values()) {
             modules.addAll(app.modules(settings));
         }
         return modules;
@@ -874,7 +965,7 @@ public class AppService extends AbstractComponent {
 
     public Collection<Class<? extends LifecycleComponent>> services() {
         List<Class<? extends LifecycleComponent>> services = Lists.newArrayList();
-        for (App app : apps.values()) {
+        for (App app : moduleApps.values()) {
             services.addAll(app.services());
         }
         return services;
@@ -882,7 +973,7 @@ public class AppService extends AbstractComponent {
 
     public Collection<Class<? extends Module>> indexModules() {
         List<Class<? extends Module>> modules = Lists.newArrayList();
-        for (App app : apps.values()) {
+        for (App app : moduleApps.values()) {
             modules.addAll(app.indexModules());
         }
         return modules;
@@ -890,7 +981,7 @@ public class AppService extends AbstractComponent {
 
     public Collection<Module> indexModules(Settings settings) {
         List<Module> modules = Lists.newArrayList();
-        for (App app : apps.values()) {
+        for (App app : moduleApps.values()) {
             modules.addAll(app.indexModules(settings));
         }
         return modules;
@@ -898,7 +989,7 @@ public class AppService extends AbstractComponent {
 
     public Collection<Class<? extends CloseableIndexComponent>> indexServices() {
         List<Class<? extends CloseableIndexComponent>> services = Lists.newArrayList();
-        for (App app : apps.values()) {
+        for (App app : moduleApps.values()) {
             services.addAll(app.indexServices());
         }
         return services;
@@ -906,7 +997,7 @@ public class AppService extends AbstractComponent {
 
     public Collection<Class<? extends Module>> shardModules() {
         List<Class<? extends Module>> modules = Lists.newArrayList();
-        for (App app : apps.values()) {
+        for (App app : moduleApps.values()) {
             modules.addAll(app.shardModules());
         }
         return modules;
@@ -914,7 +1005,7 @@ public class AppService extends AbstractComponent {
 
     public Collection<Module> shardModules(Settings settings) {
         List<Module> modules = Lists.newArrayList();
-        for (App app : apps.values()) {
+        for (App app : moduleApps.values()) {
             modules.addAll(app.shardModules(settings));
         }
         return modules;
@@ -922,7 +1013,7 @@ public class AppService extends AbstractComponent {
 
     public Collection<Class<? extends CloseableIndexComponent>> shardServices() {
         List<Class<? extends CloseableIndexComponent>> services = Lists.newArrayList();
-        for (App app : apps.values()) {
+        for (App app : moduleApps.values()) {
             services.addAll(app.shardServices());
         }
         return services;

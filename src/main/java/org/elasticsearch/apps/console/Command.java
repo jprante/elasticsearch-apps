@@ -26,6 +26,7 @@ import org.elasticsearch.apps.App;
 import org.elasticsearch.apps.AppComparator;
 import org.elasticsearch.apps.AppService;
 import org.elasticsearch.apps.ArtifactApp;
+import org.elasticsearch.apps.DependencyInfo;
 import org.elasticsearch.apps.SiteApp;
 import org.elasticsearch.common.collect.Sets;
 import org.jboss.shrinkwrap.resolver.api.maven.MavenResolvedArtifact;
@@ -37,7 +38,9 @@ public enum Command {
     RM(new RmAction()),
     LIST(new LsAction()),
     RESOLVE(new ResolveAction()),
-    INSTALL(new InstallAction());
+    INSTALL(new InstallAction()),
+    TREE(new TreeAction()),
+    WHATREQUIRES(new WhatRequiresAction());
 
     private interface Action {
 
@@ -74,7 +77,7 @@ public enum Command {
     static class LsAction implements Action {
 
         @Override
-        public void exec(Console c,  AppService service, List<String> params) throws Exception {
+        public void exec(Console c, AppService service, List<String> params) throws Exception {
             Set<App> sortedApps = Sets.newTreeSet(new AppComparator());
             sortedApps.addAll(service.apps());
             for (App app : sortedApps) {
@@ -112,7 +115,7 @@ public enum Command {
             }
         }
     }
-    
+
     static class InstallAction implements Action {
 
         @Override
@@ -131,10 +134,42 @@ public enum Command {
             if (app != null) {
                 App oldApp = service.installApp(app);
                 System.out.println("successfully installed: " + app.getCanonicalForm()
-                        + (oldApp != null ? " (previous app was " + oldApp.getCanonicalForm() + ")" : ""));                
+                        + (oldApp != null ? " (previous app was " + oldApp.getCanonicalForm() + ")" : ""));
             } else {
                 System.out.println("can't install " + dependency);
             }
         }
-    }    
+    }
+
+    static class TreeAction implements Action {
+
+        @Override
+        public void exec(Console c, AppService service, List<String> params) throws Exception {
+            if (params.size() < 1) {
+                throw new ElasticSearchIllegalArgumentException("can't execute without a given dependency");
+            }
+            String dependency = params.get(0);
+            for (DependencyInfo info : service.dependencyTree(dependency)) {
+                for (int i = 0; i < info.getLevel(); i++) {
+                    System.out.print("  ");
+                }
+                System.out.println(info.getArtifact().getCoordinate().toCanonicalForm());
+            }
+        }
+    }
+
+    static class WhatRequiresAction implements Action {
+
+        @Override
+        public void exec(Console c, AppService service, List<String> params) throws Exception {
+            if (params.size() < 1) {
+                throw new ElasticSearchIllegalArgumentException("can't execute without a given dependency");
+            }
+            String dependency = params.get(0);
+            for (App app : service.whatRequires(dependency)) {
+                System.out.println(app.getCanonicalForm());
+            }
+        }
+    }
+    
 }
