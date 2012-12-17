@@ -130,7 +130,7 @@ For the iterations already done with logfile dumps and info, see
 
 [Iteration 3 - downloading and installing all Elasticsearch core plugins automatically](elasticsearch-apps/wiki/Iteration-3)
 
-[Iteration 4 - substituting the org.elasticsratch.plugins code in the ES codebase](elasticsearch-apps/wiki/Iteration-4)
+[Iteration 4 - substituting the org.elasticsearch.plugins code in the ES codebase with the app service code](elasticsearch-apps/wiki/Iteration-4)
 
 
 License
