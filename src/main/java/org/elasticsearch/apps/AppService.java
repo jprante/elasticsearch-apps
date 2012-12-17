@@ -25,6 +25,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
+import java.net.URI;
 import java.net.URL;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
@@ -46,7 +47,7 @@ import org.elasticsearch.ElasticSearchException;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.apps.support.ExceptionFormatter;
 import org.elasticsearch.common.Strings;
-import org.elasticsearch.common.collect.ImmutableMap;
+import org.elasticsearch.common.classloader.URIClassLoader;
 import org.elasticsearch.common.collect.Lists;
 import org.elasticsearch.common.collect.MapBuilder;
 import org.elasticsearch.common.collect.Sets;
@@ -70,6 +71,11 @@ import org.jboss.shrinkwrap.resolver.api.maven.coordinate.MavenDependency;
 import org.jboss.shrinkwrap.resolver.api.maven.coordinate.MavenDependencyExclusion;
 import org.jboss.shrinkwrap.resolver.api.maven.strategy.AcceptScopesStrategy;
 
+/**
+ * An app service for Elasticsearch
+ *
+ * @author joerg
+ */
 public class AppService extends AbstractComponent {
 
     /**
@@ -77,15 +83,28 @@ public class AppService extends AbstractComponent {
      */
     public final static String DEFAULT_RESOURCE = "es-plugin.properties";
     /**
-     * The Maven settings that is loaded for dependency resolution
+     * The default Maven settings that is loaded for dependency resolution. The
+     * Maven mvn tool uses a combination of global and user local settings, most
+     * common is $HOME/.m2/settings.xml We avoid interfering with mvn tool and
+     * use our own Maven settings.
      */
     public final static String DEFAULT_SETTINGS = "config/apps.xml";
     /**
-     * The artifacts that are excluded by default.
+     * These artifacts that are excluded by default. Of course, Elasticsearch
+     * needs to be excluded.
      */
     public final static String[] DEFAULT_EXCLUDE = new String[]{"org.elasticsearch:elasticsearch"};
+    /**
+     * The enviroment where the plugins folder is definde
+     */
     private final Environment environment;
-    private ClassLoader classLoader;
+    /**
+     * An URI-based classloader for loading the apps
+     */
+    private URIClassLoader classLoader;
+    /**
+     * onModule reference
+     */
     private Map<App, List<OnModuleReference>> onModuleReferences;
     /**
      * A map for all apps
@@ -103,6 +122,8 @@ public class AppService extends AbstractComponent {
      * A map for apps that are legacy plugins
      */
     private Map<String, PluginApp> pluginApps = newHashMap();
+    // TODO replace the HTTP download helper by a Netty based implementation
+    private final HttpDownloadHelper downloadHelper = new HttpDownloadHelper();
 
     /**
      * Installing a SSL trust manager to accept HTTPS connections when
@@ -145,12 +166,14 @@ public class AppService extends AbstractComponent {
      */
     public AppService(Settings settings, Environment environment) {
         super(settings);
+        // give us a fresh class loader, please
+        this.classLoader = new URIClassLoader(settings.getClassLoader());
         this.environment = environment;
         // refresh all apps
         refreshAllApps();
         // check if all mandatory apps are there
         checkMandatory();
-        // log state to users
+        // log loaded app state
         logger.info("loaded artifact apps {}", artifactApps.keySet());
         logger.info("loaded plugin apps {}", pluginApps.keySet());
         logger.info("loaded site apps {}", siteApps.keySet());
@@ -192,7 +215,21 @@ public class AppService extends AbstractComponent {
         return pluginApps.values();
     }
 
-    public ClassLoader getClassLoader() {
+    /**
+     * Set a new classloader
+     *
+     * @param classLoader
+     */
+    public void setClassLoader(URIClassLoader classLoader) {
+        this.classLoader = classLoader;
+    }
+
+    /**
+     * Get classloader
+     *
+     * @return
+     */
+    public URIClassLoader getClassLoader() {
         return classLoader;
     }
 
@@ -201,8 +238,6 @@ public class AppService extends AbstractComponent {
      *
      */
     public synchronized void refreshAllApps() {
-        // reset class loader... TODO
-        this.classLoader = settings.getClassLoader();
 
         this.artifactApps = refreshArtifactApps();
         this.pluginApps = refreshPluginApps();
@@ -214,6 +249,8 @@ public class AppService extends AbstractComponent {
         apps.putAll(siteApps);
 
         checkMandatory();
+
+        // TODO check versions
 
         MapBuilder<App, List<OnModuleReference>> refs = MapBuilder.newMapBuilder();
         for (App app : apps.values()) {
@@ -337,18 +374,20 @@ public class AppService extends AbstractComponent {
         Set<MavenDependency> defaultDeps = Sets.newHashSet();
         for (Map.Entry<String, Settings> entry : appSettings.entrySet()) {
             String name = entry.getKey(); // not used yet
-            String dependency = entry.getValue().get("dependency");
-            String[] excludes = entry.getValue().getAsArray("exclude");
-            MavenDependencyExclusion[] exclusions = new MavenDependencyExclusion[defaultExcludes.length + excludes.length];
-            for (int i = 0; i < defaultExcludes.length; i++) {
-                exclusions[i] = MavenDependencies.createExclusion(defaultExcludes[i]);
+            boolean enabled = entry.getValue().getAsBoolean("enabled", Boolean.TRUE);
+            if (enabled) {
+                String dependency = entry.getValue().get("dependency");
+                String[] excludes = entry.getValue().getAsArray("exclude");
+                MavenDependencyExclusion[] exclusions = new MavenDependencyExclusion[defaultExcludes.length + excludes.length];
+                for (int i = 0; i < defaultExcludes.length; i++) {
+                    exclusions[i] = MavenDependencies.createExclusion(defaultExcludes[i]);
+                }
+                for (int i = 0; i < excludes.length; i++) {
+                    exclusions[defaultExcludes.length + i] = MavenDependencies.createExclusion(excludes[i]);
+                }
+                ScopeType scopeType = ScopeType.RUNTIME;
+                defaultDeps.add(MavenDependencies.createDependency(dependency, scopeType, false, exclusions));
             }
-            for (int i = 0; i < excludes.length; i++) {
-                exclusions[defaultExcludes.length + i] = MavenDependencies.createExclusion(excludes[i]);
-            }
-            ScopeType scopeType = ScopeType.RUNTIME;
-            defaultDeps.add(MavenDependencies.createDependency(dependency,
-                    scopeType, false, exclusions));
         }
         MavenResolvedArtifact[] artifacts = defaultDeps.isEmpty() ? null : Maven.configureResolver()
                 .fromFile(mavenSettingsFile)
@@ -367,28 +406,30 @@ public class AppService extends AbstractComponent {
      */
     private Map<String, PluginApp> refreshPluginApps() {
         final Map<String, PluginApp> loadedApps = newHashMap();
-        final HttpDownloadHelper downloadHelper = new HttpDownloadHelper();
         final String pluginGroupId = settings.get("apps.plugingroup", PluginApp.GROUP_ID);
         final Map<String, Settings> pluginSettings = settings.getGroups("apps.plugins");
-        // download plugins, if not already present
+        // download all declared plugins if not already present
         for (Map.Entry<String, Settings> entry : pluginSettings.entrySet()) {
             try {
                 String name = entry.getKey();
-                URL url = new URL(entry.getValue().get("url"));
-                String version = entry.getValue().get("version", "0");
-                PluginApp app = new PluginApp(pluginGroupId, name, version, url);
-                File appFile = app.getInstallPath(environment);
-                if (appFile.exists()) {
-                    loadedApps.put(app.getCanonicalForm(), app);
-                } else {
-                    appFile.mkdirs();
-                    logger.info("retrieving legacy plugin from URL {}", url);
-                    // only zip supported
-                    File zipFile = new File(environment.pluginsFile(), name + ".zip");
-                    downloadHelper.download(url, zipFile, null);
-                    // extract zip
-                    unzip(environment, new ZipFile(zipFile), app.getInstallPath(environment), app.getPathName());
-                    zipFile.delete();
+                boolean enabled = entry.getValue().getAsBoolean("enabled", Boolean.TRUE);
+                if (enabled) {
+                    URL url = new URL(entry.getValue().get("url"));
+                    String version = entry.getValue().get("version", "0");
+                    PluginApp app = new PluginApp(pluginGroupId, name, version, url);
+                    File appFile = app.getInstallPath(environment);
+                    if (appFile.exists()) {
+                        loadedApps.put(app.getCanonicalForm(), app);
+                    } else {
+                        appFile.mkdirs();
+                        logger.info("retrieving legacy plugin from URL {}", url);
+                        // only zip supported
+                        File zipFile = new File(environment.pluginsFile(), name + ".zip");
+                        downloadHelper.download(url, zipFile, null);
+                        // extract zip
+                        unzip(environment, new ZipFile(zipFile), app.getInstallPath(environment), app.getPathName());
+                        zipFile.delete();
+                    }
                 }
             } catch (IOException e) {
                 logger.error(e.getMessage(), e);
@@ -404,33 +445,35 @@ public class AppService extends AbstractComponent {
      */
     private Map<String, SiteApp> refreshSiteApps() {
         final Map<String, SiteApp> loadedApps = newHashMap();
-        final HttpDownloadHelper downloadHelper = new HttpDownloadHelper();
         final String siteGroupId = settings.get("apps.sitegroup", SiteApp.GROUP_ID);
         final Map<String, Settings> siteSettings = settings.getGroups("apps.sites");
         // loop over all declared site apps
         for (Map.Entry<String, Settings> entry : siteSettings.entrySet()) {
             try {
                 String name = entry.getKey();
-                URL url = new URL(entry.getValue().get("url"));
-                String version = entry.getValue().get("version", "0");
-                SiteApp app = new SiteApp(siteGroupId, name, version, url);
-                File appFile = app.getInstallPath(environment);
-                if (appFile.exists()) {
-                    // already downloaded and expanded
-                    loadedApps.put(app.getCanonicalForm(), app);
-                } else {
-                    // download
-                    appFile.mkdirs();
-                    logger.info("retrieving site plugin from URL {}", url);
-                    // only zip supported
-                    File zipFile = new File(environment.pluginsFile(), name + ".zip");
-                    downloadHelper.download(url, zipFile, null);
-                    // extract zip
-                    unzip(environment, new ZipFile(zipFile), app.getInstallPath(environment), app.getPathName());
-                    if (new File(appFile, "_site").exists()) {
+                boolean enabled = entry.getValue().getAsBoolean("enabled", Boolean.TRUE);
+                if (enabled) {
+                    URL url = new URL(entry.getValue().get("url"));
+                    String version = entry.getValue().get("version", "0");
+                    SiteApp app = new SiteApp(siteGroupId, name, version, url);
+                    File appFile = app.getInstallPath(environment);
+                    if (appFile.exists()) {
+                        // already downloaded and expanded
                         loadedApps.put(app.getCanonicalForm(), app);
+                    } else {
+                        // download
+                        appFile.mkdirs();
+                        logger.info("retrieving site plugin from URL {}", url);
+                        // only zip supported
+                        File zipFile = new File(environment.pluginsFile(), name + ".zip");
+                        downloadHelper.download(url, zipFile, null);
+                        // extract zip
+                        unzip(environment, new ZipFile(zipFile), app.getInstallPath(environment), app.getPathName());
+                        if (new File(appFile, "_site").exists()) {
+                            loadedApps.put(app.getCanonicalForm(), app);
+                        }
+                        zipFile.delete();
                     }
-                    zipFile.delete();
                 }
             } catch (IOException e) {
                 logger.error(e.getMessage(), e);
@@ -473,37 +516,21 @@ public class AppService extends AbstractComponent {
      * @return a map of artifacts
      */
     private Map<String, ArtifactApp> loadArtifacts(MavenResolvedArtifact[] artifacts) {
-        Class classLoaderClass = classLoader.getClass();
-        Method addURL = null;
-        while (!classLoaderClass.equals(Object.class)) {
-            try {
-                addURL = classLoaderClass.getDeclaredMethod("addURL", URL.class);
-                addURL.setAccessible(true);
-                break;
-            } catch (NoSuchMethodException e) {
-                // no method, try the parent
-                classLoaderClass = classLoaderClass.getSuperclass();
-            }
-        }
         Map<String, ArtifactApp> map = newHashMap();
-        if (addURL == null) {
-            logger.error("failed to find addURL method on classLoader [" + classLoader + "] to add methods");
-            return map;
-        }
         // no artifacts?
         if (artifacts == null) {
-            logger.warn("no artifacts to load");
+            logger.debug("no artifacts to load");
             return map;
         }
         // Now we want to know the relationship between class path and JAR.
         // build an URL map to assign found plugin on classpath to artifact
-        Map<URL, MavenResolvedArtifact> jars = newHashMap();
+        Map<URI, MavenResolvedArtifact> jars = newHashMap();
         for (MavenResolvedArtifact artifact : artifacts) {
             if (artifact.getCoordinate().getType().equals(PackagingType.JAR)) {
                 try {
-                    URL url = artifact.asFile().toURI().toURL();
-                    addURL.invoke(classLoader, url);
-                    jars.put(url, artifact);
+                    URI uri = artifact.asFile().toURI();
+                    classLoader.addUri(uri);
+                    jars.put(uri, artifact);
                 } catch (Exception e) {
                     logger.warn("failed to add [{}]", artifact.getCoordinate(), e);
                 }
@@ -532,9 +559,9 @@ public class AppService extends AbstractComponent {
                 if (jars != null) {
                     // find URL of artifact
                     boolean found = false;
-                    for (URL appUrl : jars.keySet()) {
-                        if (propUrl.toExternalForm().startsWith("jar:" + appUrl.toExternalForm())) {
-                            ArtifactApp app = new ArtifactApp(appUrl, jars.get(appUrl), plugin);
+                    for (URI appUri : jars.keySet()) {
+                        if (propUrl.toExternalForm().startsWith("jar:" + appUri.toString())) {
+                            ArtifactApp app = new ArtifactApp(appUri.toURL(), jars.get(appUri), plugin);
                             map.put(app.getCanonicalForm(), app);
                             found = true;
                         }
@@ -566,23 +593,7 @@ public class AppService extends AbstractComponent {
      * @return
      */
     private Map<String, PluginApp> loadPlugins(File pluginsFile) {
-        Class classLoaderClass = classLoader.getClass();
-        Method addURL = null;
-        while (!classLoaderClass.equals(Object.class)) {
-            try {
-                addURL = classLoaderClass.getDeclaredMethod("addURL", URL.class);
-                addURL.setAccessible(true);
-                break;
-            } catch (NoSuchMethodException e) {
-                // no method, try the parent
-                classLoaderClass = classLoaderClass.getSuperclass();
-            }
-        }
         Map<String, PluginApp> map = newHashMap();
-        if (addURL == null) {
-            logger.error("failed to find addURL method on classLoader [" + classLoader + "] to add methods");
-            return map;
-        }
         // traverse all legacy plugins in the plugins folder
         File[] pluginsFiles = pluginsFile.listFiles();
         if (pluginsFiles == null) {
@@ -593,7 +604,7 @@ public class AppService extends AbstractComponent {
             if (pluginFile.isDirectory()) {
                 try {
                     // add the root
-                    addURL.invoke(classLoader, pluginFile.toURI().toURL());
+                    classLoader.addUri(pluginFile.toURI());
                     // gather files to add
                     List<File> libFiles = Lists.newArrayList();
                     if (pluginFile.listFiles() != null) {
@@ -608,7 +619,7 @@ public class AppService extends AbstractComponent {
                         if (!(libFile.getName().endsWith(".jar") || libFile.getName().endsWith(".zip"))) {
                             continue;
                         }
-                        addURL.invoke(classLoader, libFile.toURI().toURL());
+                        classLoader.addUri(libFile.toURI());
                     }
                 } catch (Exception e) {
                     logger.warn("failed to add plugin [{}]", pluginFile, e);
@@ -629,20 +640,16 @@ public class AppService extends AbstractComponent {
             InputStream is = null;
             try {
                 // skip jar URLs, they are artifact apps
-                //if (!propUrl.getProtocol().equals("jar")) {
                 is = propUrl.openStream();
                 appProps.load(is);
                 String appClassName = appProps.getProperty("plugin");
                 Plugin plugin = instantiatePluginClass(appClassName);
                 if (isArtifactPlugin(plugin)) {
-                    logger.warn("plugin at [{}] is already present as artifact app, skipping", propUrl);
+                    logger.debug("plugin at [{}] is already present as artifact app, skipping", propUrl);
                 } else {
                     PluginApp app = new PluginApp(PluginApp.GROUP_ID, propUrl, plugin);
                     map.put(app.getCanonicalForm(), app);
                 }
-                //} else {
-                //    logger.warn("skipped {}", propUrl);
-                //}
             } catch (Exception e) {
                 logger.warn("failed to load plugin from [{}], reason: {}", propUrl, ExceptionFormatter.format(e));
             } finally {
@@ -788,7 +795,8 @@ public class AppService extends AbstractComponent {
     }
 
     /**
-     * Helper method to invoke plugin module hooks.
+     * Helper method to get the plugin module method hooks, the module
+     * references
      *
      * @param app the app to invoke
      * @return an immutable map of the on-module refs of the apps

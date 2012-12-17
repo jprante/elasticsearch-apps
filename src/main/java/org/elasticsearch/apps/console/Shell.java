@@ -40,20 +40,21 @@ public class Shell {
     private static final String PROMPT = System.getProperty("user.name") + "> ";
 
     public static void main(String[] args) {
+        // this magic line loades config/elasticsearch.yml
         Tuple<Settings, Environment> initialSettings = InternalSettingsPerparer.prepareSettings(EMPTY_SETTINGS, true);
         AppService service = new AppService(initialSettings.v1(), initialSettings.v2());
         Console console = System.console();
         if (console == null) {
             throw new RuntimeException(NO_CONSOLE);
         }
-        execCommandLoop(console, service.updatedSettings(), service);
+        execCommandLoop(console, service);
     }
 
-    private static void execCommandLoop(final Console console, Settings settings, AppService service) {
+    private static void execCommandLoop(final Console console, AppService service) {
         while (true) {
             String commandLine = console.readLine(PROMPT, new Date());
             if (commandLine == null) {
-                Command.EXIT.exec(console, settings, service, null, null);
+                Command.EXIT.exec(console, service, null, null);
             }
             Scanner scanner = new Scanner(commandLine);
             if (scanner.hasNext()) {
@@ -64,7 +65,7 @@ public class Shell {
                     while (scanner.hasNext()) {
                         params.add(scanner.next());
                     }
-                    cmd.exec(console, settings, service, params, new Command.Listener() {
+                    cmd.exec(console, service, params, new Command.Listener() {
                         @Override
                         public void exception(Exception e) {
                             console.printf(COMMAND_ERROR, cmd, ExceptionFormatter.format(e));

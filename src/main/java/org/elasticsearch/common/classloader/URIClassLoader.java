@@ -18,11 +18,9 @@ package org.elasticsearch.common.classloader;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.net.URLStreamHandler;
 import java.security.AccessControlContext;
 import java.security.AccessController;
 import java.security.CodeSource;
@@ -43,7 +41,7 @@ import java.util.jar.Manifest;
  * files with spaces in the path. SUN acknowledges the problem, but refuses to
  * modify the behavior for compatibility reasons; see Java Bug Parade 4273532,
  * 4466485.
- * 
+ *
  * Additionally, the JAR caching policy used by URLClassLoader is system-wide
  * and inflexible: once downloaded JAR files are never re-downloaded, even if
  * one creates a fresh instance of the class loader that happens to have the
@@ -52,7 +50,7 @@ import java.util.jar.Manifest;
  * potentially separate part of the system, by creating URL connection to one of
  * the URLs of that class loader search path and closing the associated JAR
  * file. See Java Bug Parade 4405789, 4388666, 4639900.
- * 
+ *
  * This class avoids these problems by 1) using URIs instead of URLs for the
  * search path (thus enforcing strict syntax conformance and defining precise
  * escaping semantics), and 2) using custom URLStreamHandler which ensures
@@ -61,52 +59,24 @@ import java.util.jar.Manifest;
  */
 public class URIClassLoader extends URLClassLoader {
 
-    final URIResourceFinder finder;
+    private final UriResourceFinder finder = new UriResourceFinder();
     final AccessControlContext acc;
 
     /**
-     * Creates URIClassLoader with the specified search path.
-     *
-     * @param uris the search path
+     * Creates URIClassLoader
      */
-    public URIClassLoader(URI[] uris) {
-        this(uris, (URLStreamHandler) null);
+    public URIClassLoader() {
+        this(null);
     }
 
     /**
-     * Creates URIClassLoader with the specified search path.
-     *
-     * @param uris the search path
-     * @param jarHandler stream handler for JAR files; implements caching policy
-     */
-    public URIClassLoader(URI[] uris, URLStreamHandler jarHandler) {
-        super(new URL[0]);
-        this.finder = new URIResourceFinder(uris, jarHandler);
-        this.acc = AccessController.getContext();
-    }
-
-    /**
-     * Creates URIClassLoader with the specified search path and parent class
+     * Creates URIClassLoader with the specified parent class
      * loader.
      *
-     * @param uris the search path
      * @param parent the parent class loader.
      */
-    public URIClassLoader(URI[] uris, ClassLoader parent) {
-        this(uris, parent, null);
-    }
-
-    /**
-     * Creates URIClassLoader with the specified search path and parent class
-     * loader.
-     *
-     * @param uris the search path
-     * @param parent the parent class loader.
-     * @param jarHandler stream handler for JAR files; implements caching policy
-     */
-    public URIClassLoader(URI[] uris, ClassLoader parent, URLStreamHandler jarHandler) {
+    public URIClassLoader(ClassLoader parent) {
         super(new URL[0], parent);
-        this.finder = new URIResourceFinder(uris, jarHandler);
         this.acc = AccessController.getContext();
     }
 
@@ -115,8 +85,12 @@ public class URIClassLoader extends URLClassLoader {
      *
      * @param uri the URI to add
      */
-    protected void addURI(URI uri) {
-        finder.addURI(uri);
+    public void addUri(URI uri) {
+        finder.addUri(uri);
+    }
+    
+    public URI[] getUris() {
+        return finder.getUris();
     }
 
     /**
@@ -126,11 +100,7 @@ public class URIClassLoader extends URLClassLoader {
      * @deprecated use addURI
      */
     protected void addURL(URL url) {
-        finder.addURI(URI.create(url.toExternalForm()));
-    }
-
-    public URL[] getURLs() {
-        return (URL[]) finder.getUrls().clone();
+        finder.addUri(URI.create(url.toExternalForm()));
     }
 
     /**
@@ -164,7 +134,7 @@ public class URIClassLoader extends URLClassLoader {
 
     protected Class defineClass(String name, ResourceHandle h) throws IOException {
         int i = name.lastIndexOf('.');
-        URL url = h.getCodeSourceURL();
+        URL url = h.getCodeSourceUrl();
         if (i != -1) { // check package
             String pkgname = name.substring(0, i);
             // check if package already loaded
@@ -275,23 +245,12 @@ public class URIClassLoader extends URLClassLoader {
         if (md == null) {
             return null;
         }
-        URL url = md.getURL();
+        URL url = md.getUrl();
         if (!"file".equals(url.getProtocol())) {
             return null;
         }
         return new File(URI.create(url.toString())).getPath();
     }
-//
-//    /**
-//     * Gets the ResourceHandle object for the specified loaded class.
-//     *
-//     * @param clazz the Class
-//     * @return the ResourceHandle of the Class
-//     */
-//    protected ResourceHandle getClassHandle(Class clazz)
-//    {
-//        return null;
-//    }
 
     /**
      * Finds the ResourceHandle object for the class with the specified name.
@@ -360,69 +319,8 @@ public class URIClassLoader extends URLClassLoader {
     protected Enumeration getResourceHandles(final String name) {
         return (Enumeration) AccessController.doPrivileged(new PrivilegedAction() {
             public Object run() {
-                return finder.getResources(name);
+                return finder.findResources(name);
             }
         }, acc);
-    }
-
-    protected URLStreamHandler getJarHandler() {
-        return finder.loader.jarHandler;
-    }
-
-    private static class URIResourceFinder implements ResourceFinder {
-
-        URL[] urls;
-        final ResourceLoader loader;
-
-        public URIResourceFinder(URI[] uris, URLStreamHandler jarHandler) {
-            try {
-                this.loader = (jarHandler != null)
-                        ? new ResourceLoader(jarHandler)
-                        : new ResourceLoader();
-                URL[] urls = new URL[uris.length];
-                for (int i = 0; i < uris.length; i++) {
-                    urls[i] = uris[i].toURL();
-                }
-                this.urls = urls;
-            } catch (MalformedURLException e) {
-                throw new IllegalArgumentException(e.getMessage());
-            }
-        }
-
-        public synchronized void addURI(URI uri) {
-            try {
-                URL url = uri.toURL();
-                int len = this.urls.length;
-                URL[] urls = new URL[len + 1];
-                System.arraycopy(this.urls, 0, urls, 0, len);
-                urls[len] = url;
-                this.urls = urls;
-            } catch (MalformedURLException e) {
-                throw new IllegalArgumentException(e.getMessage());
-            }
-        }
-
-        private synchronized final URL[] getUrls() {
-            return urls;
-        }
-
-        public ResourceHandle getResource(String name) {
-            return loader.getResource(getUrls(), name);
-        }
-
-        public Enumeration getResources(String name) {
-            return loader.getResources(getUrls(), name);
-        }
-
-        public URL findResource(String name) {
-            return loader.findResource(getUrls(), name);
-        }
-
-        public Enumeration findResources(String name) {
-            return loader.findResources(getUrls(), name);
-        }
-//        public URL[] getResolvedSearchPath() {
-//            return loader.getResolvedSearchPath(getUrls());
-//        }
     }
 }

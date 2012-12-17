@@ -365,6 +365,62 @@
 
 ########################### Apps #############################################
 
-apps.dependencies.river-rabbitmq.dependency: org.elasticsearch:elasticsearch-river-rabbitmq:[0.17.10,)
-
-apps.sites.elasticsearch-head.url: https://github.com/mobz/elasticsearch-head/archive/master.zip
+apps:
+  mandatory:
+    org.elasticsearch:elasticsearch-analysis-icu
+  sites:
+    elasticsearch-head:
+      url: https://github.com/mobz/elasticsearch-head/archive/master.zip
+      enabled: true
+  dependencies:
+    analysis-icu:
+      dependency: org.elasticsearch:elasticsearch-analysis-icu:[1.0.0,)
+      enabled: true
+    analysis-kuromoji:
+      dependency: org.elasticsearch:elasticsearch-analysis-kuromoji:[1.0.0,)
+      enabled: true
+    analysis-phonetic:
+      dependency: org.elasticsearch:elasticsearch-analysis-phonetic:[1.0.0,)
+      enabled: true
+    analysis-smartcn:
+      dependency: org.elasticsearch:elasticsearch-analysis-smartcn:[1.0.0,)
+      enabled: true
+    analysis-stempel:
+      dependency: org.elasticsearch:elasticsearch-analysis-stempel:[1.0.0,)
+      enabled: true
+    cloud-aws:
+      dependency: org.elasticsearch:elasticsearch-cloud-aws:[1.0.0,)
+      enabled: true
+    hadoop:
+      dependency: org.elasticsearch:elasticsearch-hadoop:[1.0.0,)
+      enabled: true
+    lang-python:
+      dependency: org.elasticsearch:elasticsearch-lang-python:[1.0.0,)
+      enabled: true
+    lang-groovy:
+      dependency: org.elasticsearch:elasticsearch-lang-groovy:[1.0.0,)
+      enabled: true
+    lang-javascript:
+      dependency: org.elasticsearch:elasticsearch-lang-javascript:[1.0.0,)
+      enabled: true
+    mapper-attachments:
+      dependency: org.elasticsearch:elasticsearch-mapper-attachments:[1.0.0,)
+      enabled: true
+    river-couchdb:
+      dependency: org.elasticsearch:elasticsearch-river-couchdb:[1.0.0,)
+      enabled: true
+    river-rabbitmq:
+      dependency: org.elasticsearch:elasticsearch-river-rabbitmq:[1.0.0,)
+      enabled: true
+    river-twitter:
+      dependency: org.elasticsearch:elasticsearch-river-twitter:[1.0.0,)
+      enabled: true
+    river-wikipedia:
+      dependency: org.elasticsearch:elasticsearch-river-wikipedia:[1.0.0,)
+      enabled: true
+    transport-memcached:
+      dependency: org.elasticsearch:elasticsearch-transport-memcached:[1.0.0,)
+      enabled: true
+    transport-thrift:
+      dependency: org.elasticsearch:elasticsearch-transport-thrift:[1.0.0,)
+      enabled: true

@@ -23,23 +23,49 @@ import org.elasticsearch.common.inject.Module;
 import org.elasticsearch.plugins.Plugin;
 
 /**
- * An extension point allowing to plug in custom functionality.
- * <p/>
+ * An App is an extension point for Elasticsearch allowing to plug in custom functionality,
+ * extending the basic Plugin class with grouping and versioning capabilities useful
+ * for dependency resolving.
+ * 
  * An App can be dynamically injected with {@link Module} by implementing <tt>onModule(AnyModule)</tt> method
  * removing the need to override {@link #processModule(org.elasticsearch.common.inject.Module)} and check using
  * instanceof.
  */
 public interface App extends Plugin {
 
+    /**
+     * The group of this App
+     * @return the group identifier
+     */
      String groupId();
      
+     /**
+      * The artifact name of this App
+      * @return the artifact nae
+      */
      String artifactId();
      
+     /**
+      * The version of this App
+      * @return the version
+      */
      String version();
      
+     /**
+      * The classifier of this App
+      * @return the classifier
+      */
      String classifier();
      
+     /**
+      * The type of this App
+      * @return the type
+      */
      String type();
      
+     /**
+      * The canonical form of the name of this App
+      * @return the cononical form
+      */
      String getCanonicalForm();
 }

@@ -8,4 +8,5 @@
 /.settings
 /.classpath
 /.project
-/repo
+/plugins
+/lib
