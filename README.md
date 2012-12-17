@@ -124,13 +124,13 @@ The Elasticsearch apps effort is currently under development.
 
 For the iterations already done with logfile dumps and info, see
 
-[Iteration 1](elasticsearch-apps/wiki/Iteration-1)
+[Iteration 1 - a console-based app tool](elasticsearch-apps/wiki/Iteration-1)
 
-[Iteration 2](elasticsearch-apps/wiki/Iteration-2)
+[Iteration 2 - version resolution and new URI classloader](elasticsearch-apps/wiki/Iteration-2)
 
-[Iteration 3](elasticsearch-apps/wiki/Iteration-3)
+[Iteration 3 - downloading and installing all Elasticsearch core plugins automatically](elasticsearch-apps/wiki/Iteration-3)
 
-[Iteration 4](elasticsearch-apps/wiki/Iteration-4)
+[Iteration 4 - substituting the org.elasticsratch.plugins code in the ES codebase](elasticsearch-apps/wiki/Iteration-4)
 
 
 License
