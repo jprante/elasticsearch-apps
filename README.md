@@ -1,3 +1,5 @@
+![Rubberbands](elasticsearch-apps/rubberbands.png)
+
 Elasticsearch Apps
 ==================
 
