@@ -257,7 +257,7 @@ public class AppService extends AbstractComponent {
         this.moduleApps = newHashMap();
         moduleApps.putAll(artifactApps);
         moduleApps.putAll(pluginApps);
-        
+
         checkMandatory();
 
         // TODO check versions
@@ -400,7 +400,7 @@ public class AppService extends AbstractComponent {
             DependencyInfo info = new DependencyInfo(artifacts[0], level);
             visited.add(info);
             foundDeps.add(info);
-            for (MavenResolvedArtifact artifact : artifacts) {                
+            for (MavenResolvedArtifact artifact : artifacts) {
                 String artifactName = artifact.getCoordinate().toCanonicalForm();
                 info = new DependencyInfo(artifact, level + 1);
                 if (!visited.contains(info)) {
@@ -450,6 +450,53 @@ public class AppService extends AbstractComponent {
             }
         }
         return foundDeps;
+    }
+
+    /**
+     * Helper method for downloading a plugin
+     *
+     * @param name the plugin name
+     * @param url the URL 
+     * @return true is plugin zip could be downloaded and unpacked
+     */
+    public boolean downloadAndUnpackPlugin(String name, URL url) throws IOException {
+        final String pluginGroupId = settings.get("apps.plugingroup", PluginApp.GROUP_ID);
+        String version = "0"; // dummy version
+        PluginApp app = new PluginApp(pluginGroupId, name, version, url);
+        File appFile = app.getInstallPath(environment);
+        if (appFile.exists()) {
+            return false;
+        } else {
+            appFile.mkdirs();
+            logger.info("retrieving plugin from URL {}", url);
+            // only zip supported
+            File zipFile = new File(environment.pluginsFile(), name + ".zip");
+            downloadHelper.download(url, zipFile, new HttpDownloadHelper.VerboseProgress(System.out));
+            // extract zip
+            unzip(environment, new ZipFile(zipFile), app.getInstallPath(environment), app.getPathName());
+            zipFile.delete();
+            return true;
+        }
+    }
+    
+    /**
+     * Delete a plugin from the legacy location
+     * @param name the plugin name
+     * @throws IOException 
+     */
+    public void removePlugin(String name) throws IOException {
+        File pluginToDelete = new File(environment.pluginsFile(), name);
+        if (pluginToDelete.exists()) {
+            FileSystemUtils.deleteRecursively(pluginToDelete, true);
+        }
+        pluginToDelete = new File(environment.pluginsFile(), name + ".zip");
+        if (pluginToDelete.exists()) {
+            pluginToDelete.delete();
+        }
+        File binLocation = new File(new File(environment.homeFile(), "bin"), name);
+        if (binLocation.exists()) {
+            FileSystemUtils.deleteRecursively(binLocation);
+        }        
     }
 
     /**
@@ -513,7 +560,7 @@ public class AppService extends AbstractComponent {
                         loadedApps.put(app.getCanonicalForm(), app);
                     } else {
                         appFile.mkdirs();
-                        logger.info("retrieving legacy plugin from URL {}", url);
+                        logger.info("retrieving plugin from URL {}", url);
                         // only zip supported
                         File zipFile = new File(environment.pluginsFile(), name + ".zip");
                         downloadHelper.download(url, zipFile, null);

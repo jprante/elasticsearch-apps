@@ -108,7 +108,7 @@
                     <mirrorOf>central</mirrorOf>
                 </mirror>
             </mirrors>            
-        </profile>    
+        </profile>
     </profiles>
 
 </settings>

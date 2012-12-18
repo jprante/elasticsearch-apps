@@ -21,6 +21,8 @@ package org.elasticsearch.apps.console;
 import static org.elasticsearch.common.settings.ImmutableSettings.Builder.EMPTY_SETTINGS;
 
 import java.io.Console;
+import java.io.IOException;
+import java.net.URL;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.Scanner;
@@ -32,6 +34,11 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.node.internal.InternalSettingsPerparer;
 
+/**
+ * A command shell for the App service
+ * 
+ * @author joerg
+ */
 public class Shell {
 
     private static final String NO_CONSOLE = "console not available";
@@ -47,7 +54,51 @@ public class Shell {
         if (console == null) {
             throw new RuntimeException(NO_CONSOLE);
         }
-        execCommandLoop(console, service);
+        if (args.length > 0) {
+            execCommand(service, args);
+        } else {
+            execCommandLoop(console, service);
+        }
+    }
+
+    private static void execCommand(AppService service, String[] args) {
+        String url = null;
+        for (int i = 0; i < args.length; i++) {
+            if ("url".equals(args[i]) || "-url".equals(args[i])) {
+                url = args[i + 1];
+            }
+        }
+        for (int c = 0; c < args.length; c++) {
+            String command = args[c];
+            if (command.equals("help") || command.equals("--help") || command.equals("-help") || command.equals("-h")) {
+                System.out.println("Available commands:");
+                System.out.println("    -url     [plugins location]  : Set URL to download plugins from");
+                System.out.println("    -install [plugin name]       : Downloads and installs listed plugins");
+                System.out.println("    -remove  [plugin name]       : Removes listed plugins");
+            } else if (command.equals("install") || command.equals("-install")) {
+                String pluginName = args[++c];
+                System.out.println("-> Installing " + pluginName + "...");
+                try {
+                    if (service.downloadAndUnpackPlugin(pluginName, new URL(url))) {
+                        System.out.println("plugin successfully installed");
+                    } else {
+                        System.out.println("plugin already exists, remove first");                        
+                    }
+                } catch (IOException e) {
+                    System.out.println("Failed to install " + pluginName + ", reason: " + e.getMessage());
+                }
+            } else if (command.equals("remove") || command.equals("-remove")) {
+                String pluginName = args[++c];
+                System.out.println("-> Removing " + pluginName + " ");
+                try {
+                    service.removePlugin(pluginName);
+                } catch (IOException e) {
+                    System.out.println("Failed to remove " + pluginName + ", reason: " + e.getMessage());
+                }
+            } else {
+                c++;
+            }
+        }
     }
 
     private static void execCommandLoop(final Console console, AppService service) {
