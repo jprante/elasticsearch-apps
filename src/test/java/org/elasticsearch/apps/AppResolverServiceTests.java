@@ -25,7 +25,7 @@ public class AppResolverServiceTests {
         Tuple<Settings, Environment> tuple = InternalSettingsPerparer.prepareSettings(pSettings, false);
         Settings settings = settingsBuilder().put(tuple.v1()).build();
         Environment environment = tuple.v2();
-        AppService service = new AppService(settings, environment);
+        AppService service = new AppService(settings, environment, true);
     }
 
     @Test
@@ -38,7 +38,7 @@ public class AppResolverServiceTests {
         Tuple<Settings, Environment> tuple = InternalSettingsPerparer.prepareSettings(pSettings, false);
         Settings settings = settingsBuilder().put(tuple.v1()).build();
         Environment environment = tuple.v2();
-        AppService service = new AppService(settings, environment);
+        AppService service = new AppService(settings, environment, true);
     }
 
     @Test
@@ -51,7 +51,7 @@ public class AppResolverServiceTests {
         Tuple<Settings, Environment> tuple = InternalSettingsPerparer.prepareSettings(pSettings, false);
         Settings settings = settingsBuilder().put(tuple.v1()).build();
         Environment environment = tuple.v2();
-        AppService service = new AppService(settings, environment);
+        AppService service = new AppService(settings, environment, true);
     }
     
     
@@ -64,7 +64,7 @@ public class AppResolverServiceTests {
         Tuple<Settings, Environment> tuple = InternalSettingsPerparer.prepareSettings(pSettings, false);
         Settings settings = settingsBuilder().put(tuple.v1()).build();
         Environment environment = tuple.v2();
-        AppService service = new AppService(settings, environment);
+        AppService service = new AppService(settings, environment, true);
         MavenResolvedArtifact[] artifacts = service.resolveArtifact( 
                 "org.elasticsearch:elasticsearch-river-rabbitmq:0.17.10", 
                 "runtime",

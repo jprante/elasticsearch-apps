@@ -156,7 +156,7 @@ public class TransportClient extends AbstractClient {
                 .build();
         this.environment = tuple.v2();
 
-        this.appService = new AppService(settings, tuple.v2());
+        this.appService = new AppService(settings, tuple.v2(), false);
         this.settings = appService.updatedSettings();
 
         CompressorFactory.configure(this.settings);

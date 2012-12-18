@@ -125,7 +125,7 @@ public final class InternalNode implements Node {
                     env.workFile(), env.pluginsFile());
         }
 
-        this.appService = new AppService(tuple.v1(), tuple.v2());
+        this.appService = new AppService(tuple.v1(), tuple.v2(), true);
         this.settings = appService.updatedSettings();
         this.environment = tuple.v2();
 

@@ -36,7 +36,7 @@ import org.elasticsearch.node.internal.InternalSettingsPerparer;
 
 /**
  * A command shell for the App service
- * 
+ *
  * @author joerg
  */
 public class Shell {
@@ -49,14 +49,15 @@ public class Shell {
     public static void main(String[] args) {
         // this magic line loades config/elasticsearch.yml
         Tuple<Settings, Environment> initialSettings = InternalSettingsPerparer.prepareSettings(EMPTY_SETTINGS, true);
-        AppService service = new AppService(initialSettings.v1(), initialSettings.v2());
-        Console console = System.console();
-        if (console == null) {
-            throw new RuntimeException(NO_CONSOLE);
-        }
         if (args.length > 0) {
+            AppService service = new AppService(initialSettings.v1(), initialSettings.v2(), false);
             execCommand(service, args);
         } else {
+            AppService service = new AppService(initialSettings.v1(), initialSettings.v2(), true);
+            Console console = System.console();
+            if (console == null) {
+                throw new RuntimeException(NO_CONSOLE);
+            }
             execCommandLoop(console, service);
         }
     }
@@ -82,7 +83,7 @@ public class Shell {
                     if (service.downloadAndUnpackPlugin(pluginName, new URL(url))) {
                         System.out.println("plugin successfully installed");
                     } else {
-                        System.out.println("plugin already exists, remove first");                        
+                        System.out.println("plugin already exists, remove first");
                     }
                 } catch (IOException e) {
                     System.out.println("Failed to install " + pluginName + ", reason: " + e.getMessage());

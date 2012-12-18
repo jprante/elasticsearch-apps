@@ -169,20 +169,23 @@ public class AppService extends AbstractComponent {
      *
      * @param settings the settings
      * @param environment the environment
+     * @param refresh true if all apps should be refreshed
      */
-    public AppService(Settings settings, Environment environment) {
+    public AppService(Settings settings, Environment environment, boolean refresh) {
         super(settings);
         // give us a fresh class loader, please
         this.classLoader = new URIClassLoader(settings.getClassLoader());
         this.environment = environment;
-        // refresh all apps
-        refreshAllApps();
-        // check if all mandatory apps are there
-        checkMandatory();
-        // log loaded app state
-        logger.info("loaded artifact apps {}", artifactApps.keySet());
-        logger.info("loaded plugin apps {}", pluginApps.keySet());
-        logger.info("loaded site apps {}", siteApps.keySet());
+        if (refresh) {
+            // refresh all apps
+            refreshAllApps();
+            // check if all mandatory apps are there
+            checkMandatory();
+            // log loaded app state
+            logger.info("loaded artifact apps {}", artifactApps.keySet());
+            logger.info("loaded plugin apps {}", pluginApps.keySet());
+            logger.info("loaded site apps {}", siteApps.keySet());
+        }
     }
 
     /**
@@ -453,10 +456,10 @@ public class AppService extends AbstractComponent {
     }
 
     /**
-     * Helper method for downloading a plugin
+     * Helper method for downloading a plugin with a verbode progress bar
      *
      * @param name the plugin name
-     * @param url the URL 
+     * @param url the URL
      * @return true is plugin zip could be downloaded and unpacked
      */
     public boolean downloadAndUnpackPlugin(String name, URL url) throws IOException {
@@ -468,7 +471,6 @@ public class AppService extends AbstractComponent {
             return false;
         } else {
             appFile.mkdirs();
-            logger.info("retrieving plugin from URL {}", url);
             // only zip supported
             File zipFile = new File(environment.pluginsFile(), name + ".zip");
             downloadHelper.download(url, zipFile, new HttpDownloadHelper.VerboseProgress(System.out));
@@ -478,11 +480,12 @@ public class AppService extends AbstractComponent {
             return true;
         }
     }
-    
+
     /**
      * Delete a plugin from the legacy location
+     *
      * @param name the plugin name
-     * @throws IOException 
+     * @throws IOException
      */
     public void removePlugin(String name) throws IOException {
         File pluginToDelete = new File(environment.pluginsFile(), name);
@@ -496,7 +499,7 @@ public class AppService extends AbstractComponent {
         File binLocation = new File(new File(environment.homeFile(), "bin"), name);
         if (binLocation.exists()) {
             FileSystemUtils.deleteRecursively(binLocation);
-        }        
+        }
     }
 
     /**
