@@ -18,6 +18,7 @@
  */
 package org.elasticsearch.apps;
 
+import org.elasticsearch.apps.support.DependencyInfo;
 import static org.elasticsearch.common.collect.Maps.newHashMap;
 
 import java.io.File;
@@ -377,12 +378,17 @@ public class AppService extends AbstractComponent {
         return oldApp;
     }
 
+    /**
+     * Show dependency tree
+     * @param dependency the dependency
+     * @return 
+     */
     public Set<DependencyInfo> dependencyTree(String dependency) {
         Set<DependencyInfo> visited = Sets.newHashSet();
         return dependencyTree(dependency, visited, 0);
     }
 
-    public Set<DependencyInfo> dependencyTree(String dependency, Set<DependencyInfo> visited, int level) {
+    private Set<DependencyInfo> dependencyTree(String dependency, Set<DependencyInfo> visited, int level) {
         final String mavenSettingsFile = settings.get("apps.settings", DEFAULT_SETTINGS);
         final boolean useMavenCentral = settings.getAsBoolean("apps.usemavencentral", Boolean.TRUE);
         final String[] defaultExcludes = settings.getAsArray("apps.excludes", DEFAULT_EXCLUDE);
@@ -416,12 +422,18 @@ public class AppService extends AbstractComponent {
         return foundDeps;
     }
 
+    /**
+     * Show apps that require this dependency
+     * 
+     * @param dependency
+     * @return the apps that require this dependency
+     */
     public Set<App> whatRequires(String dependency) {
         Set<String> visited = Sets.newHashSet();
         return whatRequires(dependency, visited);
     }
 
-    public Set<App> whatRequires(String dependency, Set<String> visited) {
+    private Set<App> whatRequires(String dependency, Set<String> visited) {
         final String mavenSettingsFile = settings.get("apps.settings", DEFAULT_SETTINGS);
         final boolean useMavenCentral = settings.getAsBoolean("apps.usemavencentral", Boolean.TRUE);
         final String[] defaultExcludes = settings.getAsArray("apps.excludes", DEFAULT_EXCLUDE);

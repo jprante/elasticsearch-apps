@@ -17,9 +17,10 @@
  * under the License.
  */
 
-package org.elasticsearch.apps;
+package org.elasticsearch.apps.support;
 
 import java.util.Comparator;
+import org.elasticsearch.apps.App;
 
 public class AppComparator implements Comparator<App> {
 
