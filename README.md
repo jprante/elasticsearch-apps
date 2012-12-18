@@ -1,4 +1,4 @@
-![Rubberbands](elasticsearch-apps/rubberbands.png)
+![Rubberbands](elasticsearch-apps/raw/master/rubberbands.png)
 
 Elasticsearch Apps
 ==================
