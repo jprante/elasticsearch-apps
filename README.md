@@ -109,9 +109,9 @@ Here is a quick overview of the artifact-related commands:
 	
 ``install <artifact>`` - creates an artifact app out of a dependency by looking for es-plugin.properties on the classpath and instantiating the plugin class
 	
-``remove <artifact>`` - removes an artifcat from the local app repository	
+``remove <artifact>`` - removes an artifact from the local app repository	
 	
-``tree <artifact>`` - shows all the dependencies of the given artifcat as a tree
+``tree <artifact>`` - shows all the dependencies of the given artifact as a tree
 	
 ``whatrequires <artifact>`` - for a given Maven artifact, show all Elasticsearch apps that depend on it (work in progress)
 
