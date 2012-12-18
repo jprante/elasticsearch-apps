@@ -394,7 +394,7 @@ apps:
       enabled: true
     cloud-aws:
       dependency: org.elasticsearch:elasticsearch-cloud-aws:[1.0.0,)
-      enabled: true
+      enabled: false
     hadoop:
       dependency: org.elasticsearch:elasticsearch-hadoop:[1.0.0,)
       enabled: true
@@ -409,7 +409,7 @@ apps:
       enabled: true
     mapper-attachments:
       dependency: org.elasticsearch:elasticsearch-mapper-attachments:[1.0.0,)
-      enabled: true
+      enabled: false
     river-couchdb:
       dependency: org.elasticsearch:elasticsearch-river-couchdb:[1.0.0,)
       enabled: true
