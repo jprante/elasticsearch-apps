@@ -20,6 +20,22 @@ Apps are divided into three groups:
 - site apps, downloaded as a zip file from an URL
 - Maven artifact apps, with dependencies 
 
+How to use
+----------
+
+This Apps github project elasticsearch-apps embeds Elasticsearch 0.20.1 for demonstration purpose. 
+
+Implementing the new AppService required to override some Elasticsearch classes. Therefore, in the ``bin/apps`` shell script, a special classpath is set up to ensure this.
+
+By unpacking the elasticseach-apps project, you can install it by the command
+
+    mvn clean install
+
+Some tests are run that already show how the Maven-based artifact management works.
+
+Now, you can tweak with the configurations in the ``config`` folder and try things out.
+
+To get integrated into the mainline, elasticsearch-apps will have to be converted to a pull request.
 
 How to set it up
 ----------------
