@@ -60,7 +60,12 @@ This is a verbose sample of a ``config/apps.xml`` which just activates the Maven
 			</profile>    
 		</profiles>	
 	</settings>
-	
+
+Now the Maven resolver is ready.
+
+Adding your plugin declarations to Elasticsearch configuration
+--------------------------------------------------------------
+
 You can add the plugins you want to declare to be installed by adding some lines to ``config/elasticsearch.yml``. 
 
 This short example declares the icu plugin with a given version:
